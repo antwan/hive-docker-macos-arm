@@ -1,0 +1,84 @@
+version: '3'
+
+networks:
+  hive: 
+    driver: bridge
+    name: hivenetwork
+
+services:
+
+  namenode:
+    image: menorah84/hadoop-namenode:2.0.0-hadoop3.2.2-java8
+    container_name: namenode
+    volumes:
+      - ./hdfs/namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=hive
+    env_file:
+      - ./hadoop-hive.env
+    ports:
+      - "9870:9870"
+    networks:
+      - hive
+
+  datanode:
+    image: menorah84/hadoop-datanode:2.0.0-hadoop3.2.2-java8
+    container_name: datanode
+    volumes:
+      - ./hdfs/datanode:/hadoop/dfs/data
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"
+    networks:
+      - hive
+
+  hive-server:
+    build:
+      dockerfile: docker/hive.Dockerfile
+    container_name: hive-server
+    volumes:
+      - ./employee:/employee
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    depends_on:
+      - hive-metastore
+    ports:
+      - "10000:10000"
+    networks:
+      - hive
+
+  hive-metastore:
+    build:
+      dockerfile: docker/hive.Dockerfile
+    container_name: hive-metastore
+    env_file:
+      - ./hadoop-hive.env
+    command: /opt/hive/bin/hive --service metastore
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870 datanode:9864 hive-metastore-postgresql:5432"
+    depends_on:
+      - hive-metastore-postgresql
+    ports:
+      - "9083:9083"
+    networks:
+      - hive
+
+  hive-metastore-postgresql:
+    image: menorah84/hive-metastore-postgresql:3.1.0
+    container_name: hive-metastore-postgresql
+    volumes:
+      - ./metastore-postgresql/postgresql/data:/var/lib/postgresql/data
+    depends_on:
+      - datanode
+    environment:
+      - POSTGRES_PASSWORD=hellopass
+    networks:
+      - hive
